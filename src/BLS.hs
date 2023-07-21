@@ -1,12 +1,15 @@
-module BLS ( prime
-           , hashToField -- to test in ghci
-           , expandMessageXMD -- to test in ghci
-           , hashToCurveG2
-           , clearCofactorFast -- to test in ghci
-           , i2osp
-           , os2ip
-           , findV
-           ) where
+-- module BLS ( prime
+--            , hashToField -- to test in ghci
+--            , expandMessageXMD -- to test in ghci
+--            , hashToCurveG2
+--            , clearCofactorFast -- to test in ghci
+--            , clearCofactor
+--            , i2osp
+--            , os2ip
+--            , findV
+--            ) where
+
+module BLS where
 
 import Data.Pairing.BLS12381
 import Data.ByteString ( ByteString )

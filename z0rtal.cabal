@@ -98,6 +98,8 @@ executable z0rtal
         base ^>=4.17.0.0
       , z0rtal
       , pairing
+      , elliptic-curve
+      , bytestring
 
     -- Directories containing source files.
     hs-source-dirs:   app
