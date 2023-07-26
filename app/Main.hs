@@ -1,18 +1,16 @@
 module Main where
 
-import BLS
-import Data.Curve.Weierstrass.BLS12381T ( PA, Point(..), add )
--- import Control.Exception ( assert )
--- import Data.ByteString ( ByteString )
--- import qualified Data.ByteString as BS
-import qualified Data.ByteString.Char8 as BSC
+import Test.TestVectors
+import BLS (paramDST, paramDSTTest)
 
 -- Note: test vectors are found here: https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-16#name-bls12381g2_xmdsha-256_sswu_
 
+-- Stupid main that process the test vectors IF and ONLY IF the DST is set to the correct one
+-- This is very trivial and should be fixed, I'm just rushing the PoC for now
 main :: IO ()
 main = do
-    let msg = BSC.pack "abc"
-        myP = hashToCurveG2 msg
-        theirP = (A px' py') :: PA
-    putStrLn $ "msg = " ++ show msg
-    putStrLn $ "myP == theirP : " ++ show (myP == theirP)
+    putStrLn "\nz0rtal - Zero Knowledge Portal (\"bridge\") for Ethereum"
+
+    if paramDST == paramDSTTest
+        then putStrLn $ "All tests pass: " ++ show testAll
+        else putStrLn $ "DST is set to Prod DST, can't do the tests (TO FIX)"

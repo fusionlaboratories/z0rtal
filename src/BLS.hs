@@ -11,7 +11,7 @@
 
 module BLS where
 
-import Data.Pairing.BLS12381
+import Data.Pairing.BLS12381 ( Fq, Fq2 )
 import Data.ByteString ( ByteString )
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
@@ -25,7 +25,7 @@ import Data.ByteString.Builder ( byteStringHex )
 import Data.Curve ( dbl )
 import GHC.Stack (HasCallStack)
 
--- | Domain-separation-tag to orthogonalize hash functions
+-- | Making DST a type of itself to prevent mising with the actual message
 type DST = ByteString
 
 prime :: Integer
@@ -39,79 +39,28 @@ paramK = 128
 paramM :: Int
 paramM = 2
 
--- | pre-computed here https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-16#suites-bls12381
+-- | Z param used for maping to curve (and 'sqrtRatio')
+-- pre-computed here https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-16#suites-bls12381
 paramZ :: Fq2
 paramZ = toE [ -2, -1 ]
--- paramZ = toE [ -1, 0 ]
--- paramZ = -toE [2, 1]
 
+-- | Domain-separation-tag to orthogonalize hash functions
+-- Be careful to select the right DST for prod vs for testing
 paramDST :: DST
--- paramDST = BSC.pack "BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_"        -- Found in Typescript "ref implementation"
-paramDST = BSC.pack "QUUX-V01-CS02-with-BLS12381G2_XMD:SHA-256_SSWU_RO_" -- For testing against RFC test vector
+-- paramDST = paramDSTProd
+paramDST = paramDSTTest
 
--- Test vector values, input here because they are cumbersome to type back into ghci every time I want to test it
--- Remove in Prod
-{-
+-- | DST used in Prod (check that it's correct with Ethereum impl)
+paramDSTProd :: DST
+paramDSTProd = BSC.pack "BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_"        -- Found in Typescript "ref implementation"
 
--- msg = ""
-
-u0' :: Fq2
-u0' = toE [ 0x03dbc2cce174e91ba93cbb08f26b917f98194a2ea08d1cce75b2b9cc9f21689d80bd79b594a613d0a68eb807dfdc1cf8
-          , 0x05a2acec64114845711a54199ea339abd125ba38253b70a92c876df10598bd1986b739cad67961eb94f7076511b3b39a
-          ]
-
-u1' :: Fq2
-u1' = toE [ 0x02f99798e8a5acdeed60d7e18e9120521ba1f47ec090984662846bc825de191b5b7641148c0dbc237726a334473eee94
-          , 0x145a81e418d4010cc027a68f14391b30074e89e60ee7a22f87217b2f6eb0c4b94c9115b436e6fa4607e95a98de30a435
-          ]
-q0x' = toE [ 0x019ad3fc9c72425a998d7ab1ea0e646a1f6093444fc6965f1cad5a3195a7b1e099c050d57f45e3fa191cc6d75ed7458c
-           , 0x171c88b0b0efb5eb2b88913a9e74fe111a4f68867b59db252ce5868af4d1254bfab77ebde5d61cd1a86fb2fe4a5a1c1d
-           ] :: Fq2
-q0y' = toE [ 0x0ba10604e62bdd9eeeb4156652066167b72c8d743b050fb4c1016c31b505129374f76e03fa127d6a156213576910fef3
-           , 0x0eb22c7a543d3d376e9716a49b72e79a89c9bfe9feee8533ed931cbb5373dde1fbcd7411d8052e02693654f71e15410a
-           ] :: Fq2
-q1x' = toE [ 0x113d2b9cd4bd98aee53470b27abc658d91b47a78a51584f3d4b950677cfb8a3e99c24222c406128c91296ef6b45608be
-           , 0x13855912321c5cb793e9d1e88f6f8d342d49c0b0dbac613ee9e17e3c0b3c97dfbb5a49cc3fb45102fdbaf65e0efe2632
-           ] :: Fq2
-q1y' = toE [ 0x0fd3def0b7574a1d801be44fde617162aa2e89da47f464317d9bb5abc3a7071763ce74180883ad7ad9a723a9afafcdca
-           , 0x056f617902b3c0d0f78a9a8cbda43a26b65f602f8786540b9469b060db7b38417915b413ca65f875c130bebfaa59790c
-           ] :: Fq2
-px' = toE [ 0x0141ebfbdca40eb85b87142e130ab689c673cf60f1a3e98d69335266f30d9b8d4ac44c1038e9dcdd5393faf5c41fb78a
-          , 0x05cb8437535e20ecffaef7752baddf98034139c38452458baeefab379ba13dff5bf5dd71b72418717047f5b0f37da03d
-          ] :: Fq2
-
-py' = toE [ 0x0503921d7f6a12805e72940b963c0cf3471c7b2a524950ca195d11062ee75ec076daf2d4bc358c4b190c0c98064fdd92
-          , 0x12424ac32561493f3fe3c260708a12b7c620e7be00099a974e259ddc7d1f6395c3c811cdd19f1e8dbf3e9ecfdcbab8d6
-          ] :: Fq2
--}
-
--- msg = "abc"
-px' :: Fq2
-px' = toE [ 0x02c2d18e033b960562aae3cab37a27ce00d80ccd5ba4b7fe0e7a210245129dbec7780ccc7954725f4168aff2787776e6
-           , 0x139cddbccdc5e91b9623efd38c49f81a6f83f175e80b06fc374de9eb4b41dfe4ca3a230ed250fbe3a2acf73a41177fd8
-           ]
-py' :: Fq2
-py' = toE [ 0x1787327b68159716a37440985269cf584bcb1e621d3a7202be6ea05c4cfe244aeb197642555a0645fb87bf7466b2ba48
-          , 0x00aa65dae3c8d732d10ecd2c50f8a1baf3001578f71c694e03866e9f3d49ac1e1ce70dd94a733534f106d4cec0eddd16
-          ]
-
-{-
-q0' :: PA
-q0' = A q0x' q0y'
-
-q1' :: PA
-q1' = A q1x' q1y'
-
-r' :: PA
-r' = q0'`add` q1'
-
-p' :: PA
-p' = clearCofactorFast r'
----}
+-- | DST used for testing RFC test vector
+paramDSTTest :: DST
+paramDSTTest = BSC.pack "QUUX-V01-CS02-with-BLS12381G2_XMD:SHA-256_SSWU_RO_" -- For testing against RFC test vector
 
 -- | Cofactor-clearing param
 -- hEff :: Fq
-hEff = 0xbc69f08f2ee75b3584c6a0ea91b352888e2a8e9145ad7689986ff031508ffe1329c2f178731db956d82bf015d1212b02ec0ec69d7477c1ae954cbc06689f6a359894c0adebbf6b4e8020005aaa95551
+-- hEff = 0xbc69f08f2ee75b3584c6a0ea91b352888e2a8e9145ad7689986ff031508ffe1329c2f178731db956d82bf015d1212b02ec0ec69d7477c1ae954cbc06689f6a359894c0adebbf6b4e8020005aaa95551
 
 -- | Take an aribitrary-length string of bytes and hash it to a point on the G2 curve
 -- hashToCurveG2 :: ByteString -> Fq2
@@ -122,22 +71,23 @@ hashToCurveG2 msg =
     -- Implementing the "naive", suboptimal version described here: https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-16#name-encoding-byte-strings-to-el
     -- (it is suboptimal because it makes uses of isoMap twice and then add, while we could first add and then use isoMap once on the result.
     -- it SHOULD give the same answer)
-        q0 = mapToCurveG2 u0
-        q1 = mapToCurveG2 u1
-        r = q0 `add` q1
+        -- q0 = mapToCurveG2 u0
+        -- q1 = mapToCurveG2 u1
+        -- r = q0 `add` q1
+        -- p = clearCofactor r
+        -- p = clearCofactorFast r
+    -- in p
+
+    --{-
+    -- TO DO
+        q0' = mapToCurveSimpleSWU u0 -- This is NOT the q0 from the RFC test vector as we use the optimization
+        q1' = mapToCurveSimpleSWU u1 -- This is NOT the q1 from the RFC test vector as we use the optimization
+        r' = q0' `add` q1'
+        r = isoMapG2 r'
         -- p = clearCofactor r
         p = clearCofactorFast r
     in p
-
-    {-
-    -- TO DO
-        q0' = mapToCurveSimpleSWU u0
-        q1' = mapToCurveSimpleSWU u1
-        r' = q0' `add` q1'
-        r = isoMapG2 r'
-        p = clearCofactor r
-    in p
-    -}
+    --}
     -- in error "needs mapToCurve"
 
 -- | Takes an arbitrary length byte string and map them to N elements of the finite field
@@ -306,7 +256,7 @@ isoMapG2 (A x' y') =
         else 
             let x = xNum / xDen
                 y = y' *^ yNum / yDen
-            in trace("isoMap() called") $ A x y
+            in A x y
     where
         xNum = k13 * x'^3 + k12 * x'^2 + k11 * x' + k10
         xDen = x'^2 + k21 * x' + k20
@@ -358,8 +308,8 @@ isoMapG2 (A x' y') =
 --   method with the Frobenius endomorphism as described here: https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-16#clear-cofactor-bls12381-g2
 -- NOTE: this currently DOES NOT produce the same value as the Fast method, I don't know why.
 -- We should probablty ditch it
-clearCofactor :: PA -> PA
-clearCofactor p = p `mul` hEff
+-- clearCofactor :: PA -> PA
+-- clearCofactor p = p `mul` hEff
 
 -- | NOTE: This function has been verified CORRECT with test vectors
 clearCofactorFast :: PA -> PA
