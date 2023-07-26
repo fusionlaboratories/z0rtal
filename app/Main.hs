@@ -1,7 +1,7 @@
 module Main where
 
 import BLS
--- import Data.Curve.Weierstrass.BLS12381T ( PA, Point(..), add )
+import Data.Curve.Weierstrass.BLS12381T ( PA, Point(..), add )
 -- import Control.Exception ( assert )
 -- import Data.ByteString ( ByteString )
 -- import qualified Data.ByteString as BS
@@ -11,4 +11,8 @@ import qualified Data.ByteString.Char8 as BSC
 
 main :: IO ()
 main = do
-    print $ hashToCurveG2 (BSC.pack "")
+    let msg = BSC.pack "abc"
+        myP = hashToCurveG2 msg
+        theirP = (A px' py') :: PA
+    putStrLn $ "msg = " ++ show msg
+    putStrLn $ "myP == theirP : " ++ show (myP == theirP)

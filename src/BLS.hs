@@ -42,6 +42,7 @@ paramM = 2
 -- | pre-computed here https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-16#suites-bls12381
 paramZ :: Fq2
 paramZ = toE [ -2, -1 ]
+-- paramZ = toE [ -1, 0 ]
 -- paramZ = -toE [2, 1]
 
 paramDST :: DST
@@ -50,6 +51,10 @@ paramDST = BSC.pack "QUUX-V01-CS02-with-BLS12381G2_XMD:SHA-256_SSWU_RO_" -- For 
 
 -- Test vector values, input here because they are cumbersome to type back into ghci every time I want to test it
 -- Remove in Prod
+{-
+
+-- msg = ""
+
 u0' :: Fq2
 u0' = toE [ 0x03dbc2cce174e91ba93cbb08f26b917f98194a2ea08d1cce75b2b9cc9f21689d80bd79b594a613d0a68eb807dfdc1cf8
           , 0x05a2acec64114845711a54199ea339abd125ba38253b70a92c876df10598bd1986b739cad67961eb94f7076511b3b39a
@@ -78,8 +83,19 @@ px' = toE [ 0x0141ebfbdca40eb85b87142e130ab689c673cf60f1a3e98d69335266f30d9b8d4a
 py' = toE [ 0x0503921d7f6a12805e72940b963c0cf3471c7b2a524950ca195d11062ee75ec076daf2d4bc358c4b190c0c98064fdd92
           , 0x12424ac32561493f3fe3c260708a12b7c620e7be00099a974e259ddc7d1f6395c3c811cdd19f1e8dbf3e9ecfdcbab8d6
           ] :: Fq2
+-}
 
---{-
+-- msg = "abc"
+px' :: Fq2
+px' = toE [ 0x02c2d18e033b960562aae3cab37a27ce00d80ccd5ba4b7fe0e7a210245129dbec7780ccc7954725f4168aff2787776e6
+           , 0x139cddbccdc5e91b9623efd38c49f81a6f83f175e80b06fc374de9eb4b41dfe4ca3a230ed250fbe3a2acf73a41177fd8
+           ]
+py' :: Fq2
+py' = toE [ 0x1787327b68159716a37440985269cf584bcb1e621d3a7202be6ea05c4cfe244aeb197642555a0645fb87bf7466b2ba48
+          , 0x00aa65dae3c8d732d10ecd2c50f8a1baf3001578f71c694e03866e9f3d49ac1e1ce70dd94a733534f106d4cec0eddd16
+          ]
+
+{-
 q0' :: PA
 q0' = A q0x' q0y'
 
@@ -106,8 +122,8 @@ hashToCurveG2 msg =
     -- Implementing the "naive", suboptimal version described here: https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-16#name-encoding-byte-strings-to-el
     -- (it is suboptimal because it makes uses of isoMap twice and then add, while we could first add and then use isoMap once on the result.
     -- it SHOULD give the same answer)
-        q0 = trace ("u0 == u0': " ++ show (u0 == u0') ++ "\nu1 == u1': " ++ show (u1 == u1')) $ mapToCurveG2 u0
-        q1 = trace ("q0 == q0': " ++ show (q0 == q0') ++ "\nq0 = " ++ show q0) $ mapToCurveG2 u1
+        q0 = mapToCurveG2 u0
+        q1 = mapToCurveG2 u1
         r = q0 `add` q1
         -- p = clearCofactor r
         p = clearCofactorFast r
@@ -194,7 +210,7 @@ mapToCurveSimpleSWU u =
         -- tv1' = tv1 *^ z
         tv2 = tv1'^2
         tv2_2 = tv2 + tv1'
-        tv3 = trace("\ntv2_2 = " ++ show tv2_2) $ tv2_2 + 1
+        tv3 = tv2_2 + 1
         tv3' = b * tv3
         tv4 = cmov z (-tv2_2) (tv2_2 /= 0)
         tv4' = a * tv4
@@ -213,11 +229,11 @@ mapToCurveSimpleSWU u =
         y_2 = y * y1
         x_2 = cmov x tv3' isGx1Square
         y_3 = cmov y_2 y1 isGx1Square
-        e1 = sgn0M2 u == sgn0M2 y
+        e1 = sgn0M2 u == sgn0M2 y_3
         y_4 = cmov (-y_3) y_3 e1
-        x_3 = x_2 / tv4
-    in A x_3 y_4
-    -- in (x_3, y_4)
+        x_3 = x_2 / tv4'
+    in  A x_3 y_4
+
     where
         z = paramZ
         b = toE [1012, 1012] -- param of the E' elliptic curve (not E!)
@@ -279,6 +295,7 @@ sqrtRatio u v =
                             --  in loop (i - 1) tv4_2 tv1 newTv3
                             in loop (i - 1) tv4_2 tv1_2 newTv3
 
+-- NOTE: this function is verified CORRECT with some of the Javascript implentation.
 isoMapG2 :: PA -> PA -- not exactly sure of this signature... we're going from points on E' to point on E
 isoMapG2 O = O
 isoMapG2 (A x' y') =
@@ -289,7 +306,7 @@ isoMapG2 (A x' y') =
         else 
             let x = xNum / xDen
                 y = y' *^ yNum / yDen
-            in A x y
+            in trace("isoMap() called") $ A x y
     where
         xNum = k13 * x'^3 + k12 * x'^2 + k11 * x' + k10
         xDen = x'^2 + k21 * x' + k20
@@ -398,9 +415,12 @@ psi2 (A x y) = let c1 = 1 / 2^((prime - 1) `div` 3)
 -- Definition here: https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-16#name-the-sgn0-function
 sgn0M2 :: Fq2 -> Bool
 sgn0M2 x = let [x0, x1] = fromE x
-               sign0 = (x0 `mod` 2) == 1
-               zero0 = x0 == 0
-               sign1 = (x1 `mod` 2) == 1
+            --    sign0 = (x0 `mod` 2) == 1
+            --    zero0 = x0 == 0
+            --    sign1 = (x1 `mod` 2) == 1
+               sign0 = (toInteger x0 `mod` 2) == 1
+               zero0 = toInteger x0 == 0
+               sign1 = (toInteger x1 `mod` 2) == 1
                s = sign0 || (zero0 && sign1)
             in s
 
