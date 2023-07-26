@@ -19,9 +19,11 @@ import Control.Exception ( assert )
 import Data.Bits ( shiftL, shiftR, (.&.), xor )
 import Crypto.Hash.SHA256 ( hash )
 import Data.Field.Galois ( toE, fromE, (*^) )
-import Data.Curve.Weierstrass.BLS12381T ( PA, Point(..), add, mul, frob, inv )
+import Data.Curve.Weierstrass.BLS12381T ( PA, Point(..), add, mul, frob, inv, mul' )
 import Debug.Trace ( trace )
 import Data.ByteString.Builder ( byteStringHex )
+import Data.Curve ( dbl )
+import GHC.Stack (HasCallStack)
 
 -- | Domain-separation-tag to orthogonalize hash functions
 type DST = ByteString
@@ -39,7 +41,8 @@ paramM = 2
 
 -- | pre-computed here https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-16#suites-bls12381
 paramZ :: Fq2
-paramZ = -toE [2, 1]
+paramZ = toE [ -2, -1 ]
+-- paramZ = -toE [2, 1]
 
 paramDST :: DST
 -- paramDST = BSC.pack "BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_NUL_"        -- Found in Typescript "ref implementation"
@@ -47,6 +50,15 @@ paramDST = BSC.pack "QUUX-V01-CS02-with-BLS12381G2_XMD:SHA-256_SSWU_RO_" -- For 
 
 -- Test vector values, input here because they are cumbersome to type back into ghci every time I want to test it
 -- Remove in Prod
+u0' :: Fq2
+u0' = toE [ 0x03dbc2cce174e91ba93cbb08f26b917f98194a2ea08d1cce75b2b9cc9f21689d80bd79b594a613d0a68eb807dfdc1cf8
+          , 0x05a2acec64114845711a54199ea339abd125ba38253b70a92c876df10598bd1986b739cad67961eb94f7076511b3b39a
+          ]
+
+u1' :: Fq2
+u1' = toE [ 0x02f99798e8a5acdeed60d7e18e9120521ba1f47ec090984662846bc825de191b5b7641148c0dbc237726a334473eee94
+          , 0x145a81e418d4010cc027a68f14391b30074e89e60ee7a22f87217b2f6eb0c4b94c9115b436e6fa4607e95a98de30a435
+          ]
 q0x' = toE [ 0x019ad3fc9c72425a998d7ab1ea0e646a1f6093444fc6965f1cad5a3195a7b1e099c050d57f45e3fa191cc6d75ed7458c
            , 0x171c88b0b0efb5eb2b88913a9e74fe111a4f68867b59db252ce5868af4d1254bfab77ebde5d61cd1a86fb2fe4a5a1c1d
            ] :: Fq2
@@ -59,13 +71,27 @@ q1x' = toE [ 0x113d2b9cd4bd98aee53470b27abc658d91b47a78a51584f3d4b950677cfb8a3e9
 q1y' = toE [ 0x0fd3def0b7574a1d801be44fde617162aa2e89da47f464317d9bb5abc3a7071763ce74180883ad7ad9a723a9afafcdca
            , 0x056f617902b3c0d0f78a9a8cbda43a26b65f602f8786540b9469b060db7b38417915b413ca65f875c130bebfaa59790c
            ] :: Fq2
-px' = toE [ 0x02c2d18e033b960562aae3cab37a27ce00d80ccd5ba4b7fe0e7a210245129dbec7780ccc7954725f4168aff2787776e6
-          , 0x139cddbccdc5e91b9623efd38c49f81a6f83f175e80b06fc374de9eb4b41dfe4ca3a230ed250fbe3a2acf73a41177fd8
+px' = toE [ 0x0141ebfbdca40eb85b87142e130ab689c673cf60f1a3e98d69335266f30d9b8d4ac44c1038e9dcdd5393faf5c41fb78a
+          , 0x05cb8437535e20ecffaef7752baddf98034139c38452458baeefab379ba13dff5bf5dd71b72418717047f5b0f37da03d
           ] :: Fq2
 
-py' = toE [ 0x1787327b68159716a37440985269cf584bcb1e621d3a7202be6ea05c4cfe244aeb197642555a0645fb87bf7466b2ba48
-          , 0x00aa65dae3c8d732d10ecd2c50f8a1baf3001578f71c694e03866e9f3d49ac1e1ce70dd94a733534f106d4cec0eddd16
+py' = toE [ 0x0503921d7f6a12805e72940b963c0cf3471c7b2a524950ca195d11062ee75ec076daf2d4bc358c4b190c0c98064fdd92
+          , 0x12424ac32561493f3fe3c260708a12b7c620e7be00099a974e259ddc7d1f6395c3c811cdd19f1e8dbf3e9ecfdcbab8d6
           ] :: Fq2
+
+--{-
+q0' :: PA
+q0' = A q0x' q0y'
+
+q1' :: PA
+q1' = A q1x' q1y'
+
+r' :: PA
+r' = q0'`add` q1'
+
+p' :: PA
+p' = clearCofactorFast r'
+---}
 
 -- | Cofactor-clearing param
 -- hEff :: Fq
@@ -80,10 +106,11 @@ hashToCurveG2 msg =
     -- Implementing the "naive", suboptimal version described here: https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-16#name-encoding-byte-strings-to-el
     -- (it is suboptimal because it makes uses of isoMap twice and then add, while we could first add and then use isoMap once on the result.
     -- it SHOULD give the same answer)
-        q0 = mapToCurveG2 u0
-        q1 = mapToCurveG2 u1
+        q0 = trace ("u0 == u0': " ++ show (u0 == u0') ++ "\nu1 == u1': " ++ show (u1 == u1')) $ mapToCurveG2 u0
+        q1 = trace ("q0 == q0': " ++ show (q0 == q0') ++ "\nq0 = " ++ show q0) $ mapToCurveG2 u1
         r = q0 `add` q1
-        p = clearCofactor r
+        -- p = clearCofactor r
+        p = clearCofactorFast r
     in p
 
     {-
@@ -167,7 +194,7 @@ mapToCurveSimpleSWU u =
         -- tv1' = tv1 *^ z
         tv2 = tv1'^2
         tv2_2 = tv2 + tv1'
-        tv3 = tv2_2 + 1
+        tv3 = trace("\ntv2_2 = " ++ show tv2_2) $ tv2_2 + 1
         tv3' = b * tv3
         tv4 = cmov z (-tv2_2) (tv2_2 /= 0)
         tv4' = a * tv4
@@ -255,9 +282,14 @@ sqrtRatio u v =
 isoMapG2 :: PA -> PA -- not exactly sure of this signature... we're going from points on E' to point on E
 isoMapG2 O = O
 isoMapG2 (A x' y') =
-    let x = xNum / xDen
-        y = y' * yNum / yDen
-    in A x y
+    -- let x = xNum / xDen
+        -- y = y' * yNum / yDen
+    if xDen == 0 || yDen == 0
+        then O
+        else 
+            let x = xNum / xDen
+                y = y' *^ yNum / yDen
+            in A x y
     where
         xNum = k13 * x'^3 + k12 * x'^2 + k11 * x' + k10
         xDen = x'^2 + k21 * x' + k20
@@ -307,30 +339,39 @@ isoMapG2 (A x' y') =
 --   We are using the general approach here which simply performs a scalar multiplication by hEff
 --   Once we have this implementation working, we might want to look into the faster, BLS12-381-optimized version of that
 --   method with the Frobenius endomorphism as described here: https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-16#clear-cofactor-bls12381-g2
+-- NOTE: this currently DOES NOT produce the same value as the Fast method, I don't know why.
+-- We should probablty ditch it
 clearCofactor :: PA -> PA
 clearCofactor p = p `mul` hEff
 
+-- | NOTE: This function has been verified CORRECT with test vectors
 clearCofactorFast :: PA -> PA
 clearCofactorFast p =
-    let c1 = -15132376222941642752  -- BLS12-381 parameter (-0xd201000000010000)
-        t1 = p `mul` c1
-        t2 = frob p -- psi
-        t3 = p `mul` 2
-        t3_2 = frob (frob t3) -- psi2
+    -- /!\ WARNING !
+    -- We CANNOT use let c1 = -15132376222941642752 and then use p `mul` c1.
+    -- It took me forever to track this down, but the correct way to do it is to use the positive value c1 = 15132376222941642752
+    --, then do the multiplication p `mul` c1 and then negate / take the `inv` of the result...
+    -- let c1 = -15132376222941642752  -- BLS12-381 parameter (-0xd201000000010000)
+    let c1' = 15132376222941642752
+        t1 = inv (p `mul` c1')
+        t2 = psi p
+        -- t3 = p `mul` 2
+        t3 = dbl p
+        t3_2 = psi2 t3
         t3_3 = t3_2 `add` inv t2 -- t3_3 = t3_2 - t2
         t2_2 = t1 `add` t2 -- t2_2 = t1 + t2
-        t2_3 = t2_2 `mul` c1
+        t2_3 = inv (t2_2 `mul` c1') -- here's the trick again
         t3_4 = t3_3 `add` t2_3 -- t3_4 = t3_3 + t2_3
         t3_5 = t3_4 `add` inv t1 -- t3_5 = t3_4 - t1
         q = t3_5 `add` inv p -- q = t3_5 - p
     in q
     -- where
 
-{-
+--{-
 
-Commented because Data.Curve provides `frob` which computes the frobenius endomorphism on a POINT (frobienius function under
-computes it on a POINT in the field ; but from my understanding of the way it's used in 'clearCofactorFast', we really want to
-compute the frobenius endophorism of a POINT)
+--Commented because Data.Curve provides `frob` which computes the frobenius endomorphism on a POINT (frobienius function under
+--computes it on a POINT in the field ; but from my understanding of the way it's used in 'clearCofactorFast', we really want to
+--compute the frobenius endophorism of a POINT)
 
 frobenius :: Fq2 -> Fq2
 frobenius x = let [x0, x1] = fromE x
@@ -338,19 +379,20 @@ frobenius x = let [x0, x1] = fromE x
 
 psi :: PA -> PA
 psi O       = error "psi::O not handled (should return O as well?)"
-psi (A x y) =   let base = toE [ 1, 1 ] :: Fq2
-                    c1 = 1 / base^((prime - 1) `div` 3)
-                    c2 = 1 / base^((prime - 1) `div` 2)
-                    qx = frobenius x
-                    qy = frobenius y
+psi (A x y) = let base = toE [ 1, 1 ] :: Fq2
+                  c1 = 1 / base^((prime - 1) `div` 3)
+                  c2 = 1 / base^((prime - 1) `div` 2)
+                  qx = c1 * frobenius x
+                  qy = c2 * frobenius y
                 in A qx qy
+
 psi2 :: PA -> PA
 psi2 O       = error "psi2::O not handlded (should return O as well?)"
 psi2 (A x y) = let c1 = 1 / 2^((prime - 1) `div` 3)
                    qx = c1 * x
                    qy = -y
                 in A qx qy
--}        
+---}        
 
 -- | m=2 specilized version of the "sign" sgn0 utility function
 -- Definition here: https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-hash-to-curve-16#name-the-sgn0-function
