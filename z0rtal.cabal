@@ -101,6 +101,7 @@ executable z0rtal
       , pairing
       , elliptic-curve
       , bytestring
+      , galois-field
 
     -- Directories containing source files.
     hs-source-dirs:   app

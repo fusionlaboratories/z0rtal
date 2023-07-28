@@ -11,7 +11,7 @@
 
 module BLS where
 
-import Data.Pairing.BLS12381 ( Fq, Fq2 )
+import Data.Pairing.BLS12381 ( Fr, Fq, Fq2, G1', G2', pairing )
 import Data.ByteString ( ByteString )
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BSC
@@ -22,11 +22,20 @@ import Data.Field.Galois ( toE, fromE, (*^) )
 import Data.Curve.Weierstrass.BLS12381T ( PA, Point(..), add, mul, frob, inv, mul' )
 import Debug.Trace ( trace )
 import Data.ByteString.Builder ( byteStringHex )
-import Data.Curve ( dbl )
+import Data.Curve ( dbl, gen )
 import GHC.Stack (HasCallStack)
 
--- | Making DST a type of itself to prevent mising with the actual message
+-- | Making DST a type of itself to prevent mixing with the actual message
 type DST = ByteString
+
+-- | Secret / private keys are scalars
+type SecretKey = Fr
+
+-- | In Ethereum, public keys are in the G1 group
+type PublicKey = G1'
+
+-- In Ethereum, signatures are in the G2 group
+type Signature = G2'
 
 prime :: Integer
 prime = 0x1a0111ea397fe69a4b1ba7b6434bacd764774b84f38512bf6730d2a0f6b0f6241eabfffeb153ffffb9feffffffffaaab
@@ -47,8 +56,8 @@ paramZ = toE [ -2, -1 ]
 -- | Domain-separation-tag to orthogonalize hash functions
 -- Be careful to select the right DST for prod vs for testing
 paramDST :: DST
--- paramDST = paramDSTProd
-paramDST = paramDSTTest
+paramDST = paramDSTProd
+-- paramDST = paramDSTTest
 
 -- | DST used in Prod (check that it's correct with Ethereum impl)
 paramDSTProd :: DST
@@ -398,3 +407,24 @@ findV :: Integer -> Integer -> Integer
 findV q_1 0 = error "could not find"
 findV q_1 v | q_1 `rem` (2^v) == 0 = v
             | otherwise        = findV q_1 (v-1)
+
+-- | Generate the public key associated with the given private key
+genPk :: SecretKey -> PublicKey
+genPk sk = gen `mul` sk
+
+-- | Generate a signature for the given message and hte given secret key
+signMessage :: SecretKey -> ByteString -> Signature
+signMessage sk msg = hashToCurveG2 msg `mul` sk
+
+-- | Same as 'signMessage', but the message was already mapped to a point on the G2 group
+signMessage' :: SecretKey -> G2' -> Signature
+signMessage' sk hM = hM `mul` sk
+
+-- | Verify a signature against a message and a public key
+verifySig :: PublicKey -> ByteString -> Signature -> Bool
+verifySig pk msg sig = pairing gen sig == pairing pk hM
+    where hM = hashToCurveG2 msg
+
+-- | Same as 'verifySig' but the message was already maped to a point on the G2 group
+verifySig' :: PublicKey -> G2' -> Signature -> Bool
+verifySig' pk hM sig = pairing gen sig == pairing pk hM
